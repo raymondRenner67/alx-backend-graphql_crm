@@ -1,5 +1,6 @@
 import graphene
 from graphene_django import DjangoObjectType
+from graphene_django.filter import DjangoFilterConnectionField
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from decimal import Decimal
@@ -15,18 +16,24 @@ class CustomerType(DjangoObjectType):
     class Meta:
         model = Customer
         fields = '__all__'
+        filterset_class = CustomerFilter
+        interfaces = (graphene.relay.Node,)
 
 
 class ProductType(DjangoObjectType):
     class Meta:
         model = Product
         fields = '__all__'
+        filterset_class = ProductFilter
+        interfaces = (graphene.relay.Node,)
 
 
 class OrderType(DjangoObjectType):
     class Meta:
         model = Order
         fields = '__all__'
+        filterset_class = OrderFilter
+        interfaces = (graphene.relay.Node,)
 
 
 # Input Types
@@ -288,132 +295,15 @@ class CreateOrder(graphene.Mutation):
 
 # Query
 class Query(graphene.ObjectType):
-    # Filtered queries with arguments
-    all_customers = graphene.List(
-        CustomerType,
-        name=graphene.String(),
-        email=graphene.String(),
-        created_at_gte=graphene.DateTime(),
-        created_at_lte=graphene.DateTime(),
-        phone_pattern=graphene.String(),
-        order_by=graphene.String()
-    )
+    # Connection fields with DjangoFilterConnectionField
+    all_customers = DjangoFilterConnectionField(CustomerType, filterset_class=CustomerFilter)
+    all_products = DjangoFilterConnectionField(ProductType, filterset_class=ProductFilter)
+    all_orders = DjangoFilterConnectionField(OrderType, filterset_class=OrderFilter)
     
-    all_products = graphene.List(
-        ProductType,
-        name=graphene.String(),
-        price_gte=graphene.Float(),
-        price_lte=graphene.Float(),
-        stock_gte=graphene.Int(),
-        stock_lte=graphene.Int(),
-        low_stock=graphene.Boolean(),
-        order_by=graphene.String()
-    )
-    
-    all_orders = graphene.List(
-        OrderType,
-        total_amount_gte=graphene.Float(),
-        total_amount_lte=graphene.Float(),
-        order_date_gte=graphene.DateTime(),
-        order_date_lte=graphene.DateTime(),
-        customer_name=graphene.String(),
-        product_name=graphene.String(),
-        product_id=graphene.Int(),
-        order_by=graphene.String()
-    )
-    
+    # Single item queries
     customer = graphene.Field(CustomerType, id=graphene.ID(required=True))
     product = graphene.Field(ProductType, id=graphene.ID(required=True))
     order = graphene.Field(OrderType, id=graphene.ID(required=True))
-
-    def resolve_all_customers(self, info, **kwargs):
-        queryset = Customer.objects.all()
-        
-        # Convert GraphQL camelCase to snake_case for filter
-        filter_kwargs = {}
-        order_by = None
-        
-        for key, value in kwargs.items():
-            if key == 'order_by':
-                order_by = value
-            elif key == 'created_at_gte':
-                filter_kwargs['created_at__gte'] = value
-            elif key == 'created_at_lte':
-                filter_kwargs['created_at__lte'] = value
-            else:
-                filter_kwargs[key] = value
-        
-        # Apply filters
-        filterset = CustomerFilter(filter_kwargs, queryset=queryset)
-        queryset = filterset.qs
-        
-        # Apply ordering
-        if order_by:
-            queryset = queryset.order_by(order_by)
-        
-        return queryset
-
-    def resolve_all_products(self, info, **kwargs):
-        queryset = Product.objects.all()
-        
-        # Convert GraphQL camelCase to snake_case for filter
-        filter_kwargs = {}
-        order_by = None
-        
-        for key, value in kwargs.items():
-            if key == 'order_by':
-                order_by = value
-            elif key == 'price_gte':
-                filter_kwargs['price__gte'] = value
-            elif key == 'price_lte':
-                filter_kwargs['price__lte'] = value
-            elif key == 'stock_gte':
-                filter_kwargs['stock__gte'] = value
-            elif key == 'stock_lte':
-                filter_kwargs['stock__lte'] = value
-            else:
-                filter_kwargs[key] = value
-        
-        # Apply filters
-        filterset = ProductFilter(filter_kwargs, queryset=queryset)
-        queryset = filterset.qs
-        
-        # Apply ordering
-        if order_by:
-            queryset = queryset.order_by(order_by)
-        
-        return queryset
-
-    def resolve_all_orders(self, info, **kwargs):
-        queryset = Order.objects.all().distinct()
-        
-        # Convert GraphQL camelCase to snake_case for filter
-        filter_kwargs = {}
-        order_by = None
-        
-        for key, value in kwargs.items():
-            if key == 'order_by':
-                order_by = value
-            elif key == 'total_amount_gte':
-                filter_kwargs['total_amount__gte'] = value
-            elif key == 'total_amount_lte':
-                filter_kwargs['total_amount__lte'] = value
-            elif key == 'order_date_gte':
-                filter_kwargs['order_date__gte'] = value
-            elif key == 'order_date_lte':
-                filter_kwargs['order_date__lte'] = value
-            else:
-                filter_kwargs[key] = value
-        
-        # Apply filters
-        filterset = OrderFilter(filter_kwargs, queryset=queryset)
-        queryset = filterset.qs.distinct()
-        
-        # Apply ordering
-        if order_by:
-            queryset = queryset.order_by(order_by)
-        
-        return queryset
 
     def resolve_customer(self, info, id):
         try:
